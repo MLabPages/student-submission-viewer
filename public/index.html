@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>提出物連続確認ツール</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>提出物連続確認ツール</h1>
+      <p>Word・PowerPoint・PDFを元レイアウトに近い状態で連続確認</p>
+    </div>
+    <a class="export-link" href="/api/evaluations.csv">評価をCSV出力</a>
+  </header>
+
+  <section class="folder-bar">
+    <button id="chooseFolder" class="secondary">フォルダを選択</button>
+    <input id="folderPath" type="text" placeholder="提出物フォルダのパス">
+    <label class="recursive"><input id="recursive" type="checkbox" checked> サブフォルダも含める</label>
+    <button id="loadFolder" class="primary">読み込む</button>
+  </section>
+
+  <main class="workspace">
+    <aside class="file-panel">
+      <div class="panel-heading">
+        <strong id="fileCount">提出物 0件</strong>
+        <input id="search" type="search" placeholder="学生名・ファイル名で絞り込み">
+      </div>
+      <div id="fileList" class="file-list">
+        <div class="empty-list">フォルダを選択してください</div>
+      </div>
+    </aside>
+
+    <section class="preview-panel">
+      <div class="preview-toolbar">
+        <button id="previous" class="icon-button" title="前の提出物">← 前へ</button>
+        <div class="current-title">
+          <strong id="currentName">提出物を選択してください</strong>
+          <span id="position">0 / 0</span>
+        </div>
+        <button id="next" class="icon-button" title="次の提出物">次へ →</button>
+        <button id="openOriginal" class="secondary" disabled>元ファイルを開く</button>
+      </div>
+      <div id="previewStage" class="preview-stage">
+        <div id="placeholder" class="placeholder">
+          <div class="document-mark">PDF</div>
+          <h2>提出物を選択してください</h2>
+          <p>変換が必要な場合は、現在のファイルを優先して処理します。</p>
+        </div>
+        <iframe id="preview" title="提出物のプレビュー"></iframe>
+        <div id="loading" class="loading hidden">
+          <div class="spinner"></div>
+          <strong>元レイアウトを準備しています</strong>
+          <span id="loadingMessage">Word／PowerPointをPDFに変換中です</span>
+        </div>
+        <div id="previewError" class="error-box hidden"></div>
+      </div>
+    </section>
+
+    <aside class="evaluation-panel">
+      <div class="evaluation-heading">
+        <h2>確認メモ</h2>
+        <span id="saveState">自動保存</span>
+      </div>
+      <label>状態
+        <select id="evaluationStatus" disabled>
+          <option>未確認</option>
+          <option>確認済み</option>
+          <option>要修正</option>
+          <option>再確認</option>
+        </select>
+      </label>
+      <label>点数
+        <input id="score" type="text" inputmode="decimal" placeholder="例：80" disabled>
+      </label>
+      <label class="note-label">メモ
+        <textarea id="note" placeholder="コメントや確認事項を入力" disabled></textarea>
+      </label>
+      <div class="shortcut-help">
+        <strong>ショートカット</strong>
+        <span><kbd>Alt</kbd>＋<kbd>←</kbd> 前へ</span>
+        <span><kbd>Alt</kbd>＋<kbd>→</kbd> 次へ</span>
+      </div>
+      <div class="privacy-note">提出物と一時PDFは外部へ送信されません。</div>
+    </aside>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
