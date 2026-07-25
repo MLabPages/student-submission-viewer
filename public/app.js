@@ -21,7 +21,7 @@ const state = {
 };
 
 const el = Object.fromEntries([
-  'chooseFolder', 'folderPath', 'recursive', 'loadFolder', 'fileCount', 'search',
+  'chooseFolder', 'folderPath', 'recursive', 'loadFolder', 'fileCount', 'search', 'needsReview', 'needsReviewCount',
   'listView', 'thumbnailView', 'galleryMode', 'fileSplitter',
   'conversionProgress', 'progressBar', 'progressText', 'workspace',
   'fileList', 'previous', 'next', 'currentName', 'position', 'openOriginal',
@@ -57,17 +57,21 @@ function currentIndex() {
 
 function renderList() {
   const query = el.search.value.trim().toLocaleLowerCase('ja');
+  const reviewOnly = el.needsReview.checked;
+  updateReviewCount();
   state.filtered = state.files.filter((file) => {
     const haystack = `${file.name} ${file.relativePath}`.toLocaleLowerCase('ja');
-    return haystack.includes(query);
+    return haystack.includes(query) && (!reviewOnly || ['error', 'unsupported'].includes(file.status));
   });
   const unsupportedVisible = state.filtered.filter((file) => file.status === 'unsupported').length;
-  el.fileCount.textContent = unsupportedVisible
-    ? `提出物 ${state.filtered.length}件・未対応 ${unsupportedVisible}件`
-    : `提出物 ${state.filtered.length}件`;
+  el.fileCount.textContent = reviewOnly
+    ? `要手動確認 ${state.filtered.length}件`
+    : unsupportedVisible
+      ? `提出物 ${state.filtered.length}件・未対応 ${unsupportedVisible}件`
+      : `提出物 ${state.filtered.length}件`;
   el.fileList.classList.toggle('thumbnail-view', state.viewMode === 'thumbnail');
   if (!state.filtered.length) {
-    el.fileList.innerHTML = '<div class="empty-list">該当する提出物がありません</div>';
+    el.fileList.innerHTML = `<div class="empty-list">${reviewOnly ? 'エラー・未対応の提出物はありません' : '該当する提出物がありません'}</div>`;
     updateNavigation();
     return;
   }
@@ -100,6 +104,11 @@ function renderList() {
   }
   el.fileList.appendChild(fragment);
   updateNavigation();
+}
+
+function updateReviewCount() {
+  const reviewCount = state.files.filter((file) => ['error', 'unsupported'].includes(file.status)).length;
+  el.needsReviewCount.textContent = reviewCount ? `(${reviewCount})` : '';
 }
 
 function ensureThumbnail(button, file) {
@@ -298,8 +307,15 @@ async function waitForPreview(file) {
 async function refreshStatus() {
   const value = await api('/api/status');
   const map = new Map(value.files.map((file) => [file.id, file]));
+  const previousStatuses = new Map(state.files.map((file) => [file.id, file.status]));
   state.files = state.files.map((file) => map.get(file.id) || file);
-  updateListStatuses();
+  const reviewMembershipChanged = state.files.some((file) => {
+    const before = previousStatuses.get(file.id);
+    return ['error', 'unsupported'].includes(before) !== ['error', 'unsupported'].includes(file.status);
+  });
+  updateReviewCount();
+  if (el.needsReview.checked && reviewMembershipChanged) renderList();
+  else updateListStatuses();
   renderProgress();
 }
 
@@ -411,6 +427,10 @@ el.chooseFolder.addEventListener('click', async () => {
 el.loadFolder.addEventListener('click', loadFolder);
 el.folderPath.addEventListener('keydown', (event) => { if (event.key === 'Enter') loadFolder(); });
 el.search.addEventListener('input', renderList);
+el.needsReview.addEventListener('change', () => {
+  localStorage.setItem('submissionViewerNeedsReview', String(el.needsReview.checked));
+  renderList();
+});
 el.listView.addEventListener('click', () => { setGalleryMode(false); setViewMode('list'); });
 el.thumbnailView.addEventListener('click', () => { setGalleryMode(false); setViewMode('thumbnail'); });
 el.galleryMode.addEventListener('click', () => setGalleryMode(!state.galleryMode));
@@ -480,5 +500,6 @@ async function restoreOpenFolder() {
   }
 }
 
+el.needsReview.checked = localStorage.getItem('submissionViewerNeedsReview') === 'true';
 setViewMode(state.viewMode);
 restoreOpenFolder();

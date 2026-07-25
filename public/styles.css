@@ -116,6 +116,9 @@ button:disabled { cursor: default; opacity: .45; }
 .list-heading-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 9px; }
 .panel-heading strong { display: block; font-size: 14px; }
 .panel-heading input { width: 100%; padding: 7px 9px; border: 1px solid #ccd3df; border-radius: 6px; }
+.review-filter { display: flex; align-items: center; gap: 3px; margin-top: 8px; color: #5c4a6f; font-size: 11px; cursor: pointer; }
+.review-filter input { accent-color: #7d45a8; }
+.review-filter span { min-width: 18px; color: #69358e; font-weight: 700; }
 .view-switch { display: flex; gap: 3px; }
 .view-button { width: 28px; height: 25px; padding: 0; color: var(--muted); background: white; border: 1px solid #ccd3df; border-radius: 5px; line-height: 1; }
 .view-button.active { color: var(--accent); background: var(--accent-soft); border-color: #aabcf5; }
