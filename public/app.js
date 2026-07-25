@@ -6,11 +6,20 @@ const state = {
   currentId: null,
   evaluations: {},
   pollTimer: null,
-  saveTimer: null
+  progressTimer: null,
+  saveTimer: null,
+  viewMode: localStorage.getItem('submissionViewerMode') === 'thumbnail' ? 'thumbnail' : 'list',
+  galleryMode: false,
+  panelWidths: {
+    list: Number(localStorage.getItem('submissionViewerListWidth')) || 280,
+    thumbnail: Number(localStorage.getItem('submissionViewerThumbnailWidth')) || 560
+  }
 };
 
 const el = Object.fromEntries([
   'chooseFolder', 'folderPath', 'recursive', 'loadFolder', 'fileCount', 'search',
+  'listView', 'thumbnailView', 'galleryMode', 'fileSplitter',
+  'conversionProgress', 'progressBar', 'progressText', 'workspace',
   'fileList', 'previous', 'next', 'currentName', 'position', 'openOriginal',
   'preview', 'placeholder', 'loading', 'loadingMessage', 'previewError',
   'evaluationStatus', 'score', 'note', 'saveState', 'toast'
@@ -49,6 +58,7 @@ function renderList() {
     return haystack.includes(query);
   });
   el.fileCount.textContent = `提出物 ${state.filtered.length}件`;
+  el.fileList.classList.toggle('thumbnail-view', state.viewMode === 'thumbnail');
   if (!state.filtered.length) {
     el.fileList.innerHTML = '<div class="empty-list">該当する提出物がありません</div>';
     updateNavigation();
@@ -62,6 +72,7 @@ function renderList() {
     button.dataset.id = file.id;
     const type = file.ext.slice(1).toUpperCase();
     button.innerHTML = `
+      <span class="thumbnail-shell"><span class="file-type ${file.ext.slice(1)}">${type}</span></span>
       <span class="file-type ${file.ext.slice(1)}">${type}</span>
       <span class="file-meta">
         <strong class="file-name"></strong>
@@ -70,11 +81,110 @@ function renderList() {
       <span class="status-dot ${file.status}" title="${statusLabel(file.status)}"></span>`;
     button.querySelector('.file-name').textContent = file.name;
     button.querySelector('.file-path').textContent = file.relativePath;
-    button.addEventListener('click', () => selectFile(file.id));
+    ensureThumbnail(button, file);
+    button.addEventListener('click', () => {
+      if (state.galleryMode) setGalleryMode(false);
+      selectFile(file.id);
+    });
     fragment.appendChild(button);
   }
   el.fileList.appendChild(fragment);
   updateNavigation();
+}
+
+function ensureThumbnail(button, file) {
+  if (state.viewMode !== 'thumbnail' || file.status !== 'ready') return;
+  const shell = button.querySelector('.thumbnail-shell');
+  if (!shell || shell.querySelector('.thumbnail-frame')) return;
+  shell.textContent = '';
+  const frame = document.createElement('iframe');
+  frame.className = 'thumbnail-frame';
+  frame.tabIndex = -1;
+  frame.setAttribute('aria-hidden', 'true');
+  frame.loading = 'lazy';
+  frame.src = `/api/preview/${file.id}#page=1&view=FitH&toolbar=0&navpanes=0&scrollbar=0`;
+  shell.appendChild(frame);
+}
+
+function renderProgress() {
+  const total = state.files.length;
+  if (!total) {
+    el.conversionProgress.classList.add('hidden');
+    return;
+  }
+  const counts = { ready: 0, waiting: 0, queued: 0, converting: 0, error: 0 };
+  for (const file of state.files) counts[file.status] = (counts[file.status] || 0) + 1;
+  const finished = counts.ready + counts.error;
+  el.conversionProgress.classList.remove('hidden');
+  el.progressBar.style.width = `${Math.round((finished / total) * 100)}%`;
+  const pending = counts.waiting + counts.queued;
+  const details = [`PDF準備 ${counts.ready} / ${total}`];
+  if (counts.converting) details.push(`変換中 ${counts.converting}`);
+  if (pending) details.push(`待機 ${pending}`);
+  if (counts.error) details.push(`エラー ${counts.error}`);
+  el.progressText.textContent = details.join('・');
+}
+
+function updateListStatuses() {
+  for (const file of state.files) {
+    const button = el.fileList.querySelector(`.file-item[data-id="${file.id}"]`);
+    if (!button) continue;
+    const dot = button.querySelector('.status-dot');
+    dot.className = `status-dot ${file.status}`;
+    dot.title = statusLabel(file.status);
+    ensureThumbnail(button, file);
+  }
+}
+
+function setViewMode(mode) {
+  state.viewMode = mode;
+  localStorage.setItem('submissionViewerMode', mode);
+  el.listView.classList.toggle('active', mode === 'list');
+  el.thumbnailView.classList.toggle('active', mode === 'thumbnail');
+  el.workspace.classList.toggle('thumbnail-layout', mode === 'thumbnail');
+  el.listView.setAttribute('aria-pressed', String(mode === 'list'));
+  el.thumbnailView.setAttribute('aria-pressed', String(mode === 'thumbnail'));
+  applyPanelWidth();
+  renderList();
+}
+
+function defaultPanelWidth(mode = state.viewMode) {
+  return mode === 'thumbnail' ? 560 : 280;
+}
+
+function clampPanelWidth(width) {
+  const workspaceWidth = el.workspace.getBoundingClientRect().width;
+  const minimum = state.viewMode === 'thumbnail' ? 360 : 230;
+  const reserved = window.innerWidth <= 1050 ? 410 : 640;
+  const maximum = Math.max(minimum, workspaceWidth - reserved);
+  return Math.round(Math.min(Math.max(width, minimum), maximum));
+}
+
+function applyPanelWidth(width = state.panelWidths[state.viewMode]) {
+  if (state.galleryMode) return;
+  const value = clampPanelWidth(width);
+  state.panelWidths[state.viewMode] = value;
+  el.workspace.style.setProperty('--file-panel-width', `${value}px`);
+  el.fileSplitter.setAttribute('aria-valuenow', String(value));
+  el.fileSplitter.setAttribute('aria-valuemin', state.viewMode === 'thumbnail' ? '360' : '230');
+}
+
+function savePanelWidth() {
+  const key = state.viewMode === 'thumbnail'
+    ? 'submissionViewerThumbnailWidth'
+    : 'submissionViewerListWidth';
+  localStorage.setItem(key, String(state.panelWidths[state.viewMode]));
+}
+
+function setGalleryMode(enabled) {
+  state.galleryMode = enabled;
+  el.workspace.classList.toggle('gallery-mode', enabled);
+  el.galleryMode.classList.toggle('active', enabled);
+  el.galleryMode.setAttribute('aria-pressed', String(enabled));
+  el.galleryMode.textContent = enabled ? '内容を確認' : '作品を探す';
+  if (enabled && state.viewMode !== 'thumbnail') setViewMode('thumbnail');
+  else renderList();
+  if (!enabled) applyPanelWidth();
 }
 
 function statusLabel(status) {
@@ -164,7 +274,22 @@ async function refreshStatus() {
   const value = await api('/api/status');
   const map = new Map(value.files.map((file) => [file.id, file]));
   state.files = state.files.map((file) => map.get(file.id) || file);
-  renderList();
+  updateListStatuses();
+  renderProgress();
+}
+
+function startProgressPolling() {
+  clearTimeout(state.progressTimer);
+  const poll = async () => {
+    try {
+      await refreshStatus();
+      const pending = state.files.some((file) => ['waiting', 'queued', 'converting'].includes(file.status));
+      if (pending) state.progressTimer = setTimeout(poll, 800);
+    } catch {
+      state.progressTimer = setTimeout(poll, 1600);
+    }
+  };
+  poll();
 }
 
 async function loadFolder() {
@@ -172,6 +297,7 @@ async function loadFolder() {
   if (!folder) return showToast('フォルダを選択してください。');
   el.loadFolder.disabled = true;
   el.loadFolder.textContent = '読み込み中…';
+  clearTimeout(state.progressTimer);
   try {
     const result = await api('/api/scan', {
       method: 'POST',
@@ -191,6 +317,8 @@ async function loadFolder() {
     el.previewError.classList.add('hidden');
     setEvaluationEnabled(false);
     renderList();
+    renderProgress();
+    startProgressPolling();
     if (state.files.length) await selectFile(state.files[0].id);
     else showToast('対応するファイルが見つかりませんでした。');
   } catch (error) {
@@ -232,19 +360,63 @@ function scheduleSave() {
 
 el.chooseFolder.addEventListener('click', async () => {
   el.chooseFolder.disabled = true;
+  const originalLabel = el.chooseFolder.textContent;
+  el.chooseFolder.textContent = '選択画面を開いています…';
+  showToast('フォルダ選択画面を開いています。表示されない場合は、この画面の後ろも確認してください。');
   try {
-    const value = await api('/api/choose-folder', { method: 'POST', body: '{}' });
-    if (value.path) el.folderPath.value = value.path;
+    const value = window.desktopApi
+      ? { path: await window.desktopApi.chooseFolder() }
+      : await api('/api/choose-folder', { method: 'POST', body: '{}' });
+    if (value.path) {
+      el.folderPath.value = value.path;
+      await loadFolder();
+    }
   } catch (error) {
     showToast(error.message);
   } finally {
     el.chooseFolder.disabled = false;
+    el.chooseFolder.textContent = originalLabel;
   }
 });
 
 el.loadFolder.addEventListener('click', loadFolder);
 el.folderPath.addEventListener('keydown', (event) => { if (event.key === 'Enter') loadFolder(); });
 el.search.addEventListener('input', renderList);
+el.listView.addEventListener('click', () => { setGalleryMode(false); setViewMode('list'); });
+el.thumbnailView.addEventListener('click', () => { setGalleryMode(false); setViewMode('thumbnail'); });
+el.galleryMode.addEventListener('click', () => setGalleryMode(!state.galleryMode));
+el.fileSplitter.addEventListener('pointerdown', (event) => {
+  if (state.galleryMode) return;
+  event.preventDefault();
+  el.fileSplitter.setPointerCapture(event.pointerId);
+  el.workspace.classList.add('resizing');
+});
+el.fileSplitter.addEventListener('pointermove', (event) => {
+  if (!el.fileSplitter.hasPointerCapture(event.pointerId)) return;
+  const bounds = el.workspace.getBoundingClientRect();
+  applyPanelWidth(event.clientX - bounds.left);
+});
+el.fileSplitter.addEventListener('pointerup', (event) => {
+  if (!el.fileSplitter.hasPointerCapture(event.pointerId)) return;
+  el.fileSplitter.releasePointerCapture(event.pointerId);
+  el.workspace.classList.remove('resizing');
+  savePanelWidth();
+});
+el.fileSplitter.addEventListener('dblclick', () => {
+  state.panelWidths[state.viewMode] = defaultPanelWidth();
+  applyPanelWidth();
+  savePanelWidth();
+});
+el.fileSplitter.addEventListener('keydown', (event) => {
+  if (!['ArrowLeft', 'ArrowRight', 'Home'].includes(event.key)) return;
+  event.preventDefault();
+  const next = event.key === 'Home'
+    ? defaultPanelWidth()
+    : state.panelWidths[state.viewMode] + (event.key === 'ArrowRight' ? 20 : -20);
+  applyPanelWidth(next);
+  savePanelWidth();
+});
+window.addEventListener('resize', () => applyPanelWidth());
 el.previous.addEventListener('click', () => move(-1));
 el.next.addEventListener('click', () => move(1));
 el.openOriginal.addEventListener('click', async () => {
@@ -271,10 +443,13 @@ async function restoreOpenFolder() {
     state.evaluations = {};
     for (const file of state.files) state.evaluations[file.id] = file.evaluation || {};
     renderList();
+    renderProgress();
+    startProgressPolling();
     await selectFile(state.files[0].id);
   } catch {
     // The screen can still be used by selecting a folder manually.
   }
 }
 
+setViewMode(state.viewMode);
 restoreOpenFolder();

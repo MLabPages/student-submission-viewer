@@ -1,10 +1,48 @@
 {
   "name": "student-submission-viewer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
+  "main": "electron-main.js",
   "description": "Word, PowerPoint and PDF submissions viewer with layout-preserving previews",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check public/app.js"
+    "desktop": "electron .",
+    "dist": "electron-builder --win nsis",
+    "smoke": "node scripts/smoke-test.js",
+    "check": "node --check server.js && node --check public/app.js && node --check electron-main.js && node --check electron-preload.js"
+  },
+  "build": {
+    "appId": "jp.mlab.student-submission-viewer",
+    "productName": "提出物連続確認ツール",
+    "asar": true,
+    "asarUnpack": [
+      "scripts/choose-folder.ps1",
+      "scripts/convert-office.ps1",
+      "scripts/open-file.ps1"
+    ],
+    "files": [
+      "assets/**/*",
+      "public/**/*",
+      "scripts/**/*",
+      "electron-main.js",
+      "electron-preload.js",
+      "server.js",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/submission-viewer.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "提出物連続確認ツール"
+    }
+  },
+  "devDependencies": {
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3"
   }
 }

@@ -11,7 +11,12 @@ const { URL } = require('url');
 
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.PORT || 3210);
+let activePort = PORT;
 const ROOT = __dirname;
+const PACKAGED_ROOT = ROOT.toLowerCase().endsWith('app.asar')
+  ? `${ROOT.slice(0, -'app.asar'.length)}app.asar.unpacked`
+  : ROOT;
+const SCRIPTS_DIR = path.join(PACKAGED_ROOT, 'scripts');
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const DATA_DIR = path.join(process.env.LOCALAPPDATA || os.tmpdir(), 'StudentSubmissionViewer');
 const CACHE_DIR = path.join(DATA_DIR, 'cache');
@@ -138,7 +143,7 @@ function runPowerShell(script, args = [], options = {}) {
       ...args
     ], {
       windowsHide: !options.visible,
-      cwd: ROOT
+      cwd: PACKAGED_ROOT
     });
     const stdout = [];
     const stderr = [];
@@ -157,7 +162,15 @@ function runPowerShell(script, args = [], options = {}) {
 function enqueue(file, priority = false) {
   if (!file || file.ext === '.pdf' || fs.existsSync(cachePathFor(file))) return;
   const existing = jobs.get(file.id);
-  if (existing?.status === 'converting' || existing?.status === 'queued') return;
+  if (existing?.status === 'converting') return;
+  if (existing?.status === 'queued') {
+    if (priority) {
+      const index = queue.indexOf(file.id);
+      if (index >= 0) queue.splice(index, 1);
+      queue.unshift(file.id);
+    }
+    return;
+  }
   jobs.set(file.id, { status: 'queued', error: '' });
   if (priority) queue.unshift(file.id);
   else queue.push(file.id);
@@ -179,7 +192,7 @@ async function processQueue() {
     }
     jobs.set(id, { status: 'converting', error: '' });
     try {
-      await runPowerShell(path.join(ROOT, 'scripts', 'convert-office.ps1'), [
+      await runPowerShell(path.join(SCRIPTS_DIR, 'convert-office.ps1'), [
         '-Source', file.path,
         '-Output', output
       ]);
@@ -272,12 +285,12 @@ function csvEscape(value) {
 const server = http.createServer(async (req, res) => {
   try {
     setSecurityHeaders(res);
-    const allowedHosts = new Set([`${HOST}:${PORT}`, `localhost:${PORT}`]);
+    const allowedHosts = new Set([`${HOST}:${activePort}`, `localhost:${activePort}`]);
     if (!allowedHosts.has(req.headers.host || '')) {
       return sendJson(res, 403, { error: 'Invalid local host.' });
     }
     const origin = req.headers.origin;
-    const allowedOrigins = new Set([`http://${HOST}:${PORT}`, `http://localhost:${PORT}`]);
+    const allowedOrigins = new Set([`http://${HOST}:${activePort}`, `http://localhost:${activePort}`]);
     if (origin && !allowedOrigins.has(origin)) {
       return sendJson(res, 403, { error: 'Cross-origin access is not allowed.' });
     }
@@ -290,7 +303,7 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === '/api/choose-folder' && req.method === 'POST') {
       const selected = await runPowerShell(
-        path.join(ROOT, 'scripts', 'choose-folder.ps1'),
+        path.join(SCRIPTS_DIR, 'choose-folder.ps1'),
         [],
         { sta: true, visible: true }
       );
@@ -309,6 +322,7 @@ const server = http.createServer(async (req, res) => {
       jobs.clear();
       queue.length = 0;
       files = await scanDirectory(resolved, body.recursive !== false);
+      files.forEach((file) => enqueue(file));
       return sendJson(res, 200, { folder: currentFolder, files: files.map(publicFile) });
     }
 
@@ -344,7 +358,7 @@ const server = http.createServer(async (req, res) => {
       const id = pathname.slice('/api/open/'.length);
       const file = findFile(id);
       if (!file) return sendJson(res, 404, { error: 'ファイルが見つかりません。' });
-      runPowerShell(path.join(ROOT, 'scripts', 'open-file.ps1'), ['-Path', file.path], { visible: true })
+      runPowerShell(path.join(SCRIPTS_DIR, 'open-file.ps1'), ['-Path', file.path], { visible: true })
         .catch((error) => console.error(error));
       return sendJson(res, 200, { ok: true });
     }
@@ -393,27 +407,50 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-loadEvaluations()
-  .then(() => fsp.mkdir(CACHE_DIR, { recursive: true }))
-  .then(() => {
-    server.listen(PORT, HOST, () => {
-      fs.writeFileSync(PORT_FILE, String(PORT), 'utf8');
-      console.log(`提出物連続確認ツール: http://${HOST}:${PORT}`);
-    });
-  })
-  .catch((error) => {
+let startPromise = null;
+
+function startServer() {
+  if (startPromise) return startPromise;
+  startPromise = loadEvaluations()
+    .then(() => fsp.mkdir(CACHE_DIR, { recursive: true }))
+    .then(() => new Promise((resolve, reject) => {
+      const onError = (error) => {
+        server.off('listening', onListening);
+        startPromise = null;
+        reject(error);
+      };
+      const onListening = () => {
+        server.off('error', onError);
+        activePort = server.address().port;
+        fs.writeFileSync(PORT_FILE, String(activePort), 'utf8');
+        const url = `http://${HOST}:${activePort}`;
+        console.log(`提出物連続確認ツール: ${url}`);
+        resolve({ server, url, port: activePort });
+      };
+      server.once('error', onError);
+      server.once('listening', onListening);
+      server.listen(PORT, HOST);
+    }));
+  return startPromise;
+}
+
+function stopServer() {
+  if (!server.listening) return Promise.resolve();
+  return new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+}
+
+if (require.main === module) {
+  startServer().catch((error) => {
     console.error(error);
     process.exit(1);
   });
+}
 
-server.on('error', (error) => {
-  console.error(error);
-  process.exit(1);
-});
+module.exports = { startServer, stopServer };
 
 process.on('exit', () => {
   try {
-    if (fs.readFileSync(PORT_FILE, 'utf8').trim() === String(PORT)) fs.unlinkSync(PORT_FILE);
+    if (fs.readFileSync(PORT_FILE, 'utf8').trim() === String(activePort)) fs.unlinkSync(PORT_FILE);
   } catch {
     // The port file may not exist during an early startup failure.
   }

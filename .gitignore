@@ -3,3 +3,4 @@ qa/
 tmp/
 *.log
 node_modules/
+dist/
