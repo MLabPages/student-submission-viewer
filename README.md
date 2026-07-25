@@ -4,7 +4,7 @@
 
 ## すぐ使う
 
-[最新版のダウンロードページ](https://github.com/MLabPages/student-submission-viewer/releases/latest)から `提出物連続確認ツール Setup 1.1.0.exe` をダウンロードして実行します。インストール後は、スタートメニューまたはデスクトップの「提出物連続確認ツール」から起動できます。
+[最新版のダウンロードページ](https://github.com/MLabPages/student-submission-viewer/releases/latest)から `Setup.1.1.0.exe` をダウンロードして実行します。インストール後は、スタートメニューまたはデスクトップの「提出物連続確認ツール」から起動できます。
 
 初回にWindowsの保護画面が表示された場合は、発行元とダウンロード元がこのリポジトリであることを確認してから「詳細情報」→「実行」を選択してください。
 
