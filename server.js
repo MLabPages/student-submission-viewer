@@ -22,7 +22,29 @@ const DATA_DIR = path.join(process.env.LOCALAPPDATA || os.tmpdir(), 'StudentSubm
 const CACHE_DIR = path.join(DATA_DIR, 'cache');
 const EVALUATIONS_FILE = path.join(DATA_DIR, 'evaluations.json');
 const PORT_FILE = path.join(DATA_DIR, 'port.txt');
-const SUPPORTED = new Set(['.pdf', '.doc', '.docx', '.ppt', '.pptx']);
+const IMAGE_MIME_TYPES = new Map([
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.jfif', 'image/jpeg'],
+  ['.png', 'image/png'],
+  ['.gif', 'image/gif'],
+  ['.webp', 'image/webp'],
+  ['.bmp', 'image/bmp'],
+  ['.avif', 'image/avif'],
+  ['.apng', 'image/apng'],
+  ['.ico', 'image/x-icon']
+]);
+const WORD_FORMATS = ['.doc', '.docx', '.docm', '.rtf', '.odt', '.txt'];
+const POWERPOINT_FORMATS = ['.ppt', '.pptx', '.pptm', '.pps', '.ppsx', '.odp'];
+const SPREADSHEET_FORMATS = ['.xls', '.xlsx', '.xlsm', '.xlsb', '.csv', '.ods'];
+const DIRECT_PREVIEW = new Set(['.pdf', ...IMAGE_MIME_TYPES.keys()]);
+const SUPPORTED = new Set([
+  ...DIRECT_PREVIEW,
+  ...WORD_FORMATS,
+  ...POWERPOINT_FORMATS,
+  ...SPREADSHEET_FORMATS
+]);
+const IGNORED_FILES = new Set(['thumbs.db', 'desktop.ini', '.ds_store']);
 
 let currentFolder = '';
 let files = [];
@@ -83,7 +105,7 @@ function cachePathFor(file) {
 
 function publicFile(file) {
   const job = jobs.get(file.id);
-  const cached = file.ext === '.pdf' || fs.existsSync(cachePathFor(file));
+  const cached = DIRECT_PREVIEW.has(file.ext) || fs.existsSync(cachePathFor(file));
   return {
     id: file.id,
     name: file.name,
@@ -91,7 +113,8 @@ function publicFile(file) {
     ext: file.ext,
     size: file.size,
     mtimeMs: file.mtimeMs,
-    status: file.ext === '.pdf' || cached ? 'ready' : (job?.status || 'waiting'),
+    supported: file.supported,
+    status: !file.supported ? 'unsupported' : cached ? 'ready' : (job?.status || 'waiting'),
     error: job?.error || '',
     evaluation: evaluations[file.path] || {}
   };
@@ -110,8 +133,8 @@ async function scanDirectory(root, recursive) {
         if (recursive) await walk(absolutePath);
         continue;
       }
+      if (entry.name.startsWith('~$') || IGNORED_FILES.has(entry.name.toLowerCase())) continue;
       const ext = path.extname(entry.name).toLowerCase();
-      if (!SUPPORTED.has(ext)) continue;
       const stat = await fsp.stat(absolutePath);
       found.push({
         id: fileId(absolutePath),
@@ -119,6 +142,7 @@ async function scanDirectory(root, recursive) {
         name: entry.name,
         relativePath: path.relative(root, absolutePath),
         ext,
+        supported: SUPPORTED.has(ext),
         size: stat.size,
         mtimeMs: stat.mtimeMs
       });
@@ -160,7 +184,7 @@ function runPowerShell(script, args = [], options = {}) {
 }
 
 function enqueue(file, priority = false) {
-  if (!file || file.ext === '.pdf' || fs.existsSync(cachePathFor(file))) return;
+  if (!file || !file.supported || DIRECT_PREVIEW.has(file.ext) || fs.existsSync(cachePathFor(file))) return;
   const existing = jobs.get(file.id);
   if (existing?.status === 'converting') return;
   if (existing?.status === 'queued') {
@@ -205,10 +229,13 @@ async function processQueue() {
   queueRunning = false;
 }
 
-async function servePdf(req, res, filePath) {
+async function servePreview(req, res, filePath, extension) {
   const stat = await fsp.stat(filePath);
   const range = req.headers.range;
-  res.setHeader('Content-Type', 'application/pdf');
+  const contentType = extension === '.pdf'
+    ? 'application/pdf'
+    : IMAGE_MIME_TYPES.get(extension) || 'application/octet-stream';
+  res.setHeader('Content-Type', contentType);
   res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('Content-Disposition', 'inline');
   res.setHeader('Cache-Control', 'private, max-age=300');
@@ -341,7 +368,13 @@ const server = http.createServer(async (req, res) => {
       const id = pathname.slice('/api/preview/'.length);
       const file = findFile(id);
       if (!file) return sendJson(res, 404, { error: 'ファイルが見つかりません。' });
-      const previewPath = file.ext === '.pdf' ? file.path : cachePathFor(file);
+      if (!file.supported) {
+        return sendJson(res, 415, {
+          error: `${file.ext || '拡張子なし'} はプレビュー未対応です。見落としを防ぐため一覧に表示しています。「元ファイルを開く」で確認してください。`
+        });
+      }
+      const direct = DIRECT_PREVIEW.has(file.ext);
+      const previewPath = direct ? file.path : cachePathFor(file);
       if (!fs.existsSync(previewPath)) {
         enqueue(file, true);
         const job = jobs.get(id);
@@ -350,7 +383,7 @@ const server = http.createServer(async (req, res) => {
           error: job?.error || ''
         });
       }
-      await servePdf(req, res, previewPath);
+      await servePreview(req, res, previewPath, direct ? file.ext : '.pdf');
       return;
     }
 

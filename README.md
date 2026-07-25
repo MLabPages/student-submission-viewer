@@ -1,10 +1,10 @@
 # 提出物連続確認ツール
 
-学生の Word、PowerPoint、PDF を、元レイアウトに近いPDF表示で連続確認するWindowsデスクトップアプリです。提出物は外部へ送信せず、利用者のPC内で処理します。
+学生の Word、PowerPoint、PDF、画像を連続確認するWindowsデスクトップアプリです。提出物は外部へ送信せず、利用者のPC内で処理します。
 
 ## すぐ使う
 
-[最新版のダウンロードページ](https://github.com/MLabPages/student-submission-viewer/releases/latest)から `Setup.1.1.0.exe` をダウンロードして実行します。インストール後は、スタートメニューまたはデスクトップの「提出物連続確認ツール」から起動できます。
+[最新版のダウンロードページ](https://github.com/MLabPages/student-submission-viewer/releases/latest)から `Setup.1.2.0.exe` をダウンロードして実行します。インストール後は、スタートメニューまたはデスクトップの「提出物連続確認ツール」から起動できます。
 
 初回にWindowsの保護画面が表示された場合は、発行元とダウンロード元がこのリポジトリであることを確認してから「詳細情報」→「実行」を選択してください。
 
@@ -57,6 +57,13 @@
 - Word: `.doc`, `.docx`
 - PowerPoint: `.ppt`, `.pptx`
 - PDF: `.pdf`
+- 画像: `.jpg`, `.jpeg`, `.jfif`, `.png`, `.gif`, `.webp`, `.bmp`
+- その他の画像: `.avif`, `.apng`, `.ico`
+- Word・文書: `.docm`, `.rtf`, `.odt`, `.txt`
+- PowerPoint・スライド: `.pptm`, `.pps`, `.ppsx`, `.odp`
+- Excel・表計算: `.xls`, `.xlsx`, `.xlsm`, `.xlsb`, `.csv`, `.ods`
+
+未対応形式も一覧から除外しません。件数を画面上部に出し、各ファイルへ紫色の「未対応」ラベルを表示して、元ファイルを開いて確認できます。Apple Pages（`.pages`）／Keynote（`.key`）／Numbers（`.numbers`）、iPhone写真のHEIC／HEIF、ZIP、TIFFなどが含まれていても、提出物の存在を見落とさない設計です。
 
 WordとPowerPointの変換には、このPCにインストールされているMicrosoft Officeを使います。提出物は外部へ送信されません。元ファイルは変更しません。
 

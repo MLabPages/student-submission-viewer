@@ -131,7 +131,7 @@ button:disabled { cursor: default; opacity: .45; }
   width: 100%;
   padding: 11px 12px;
   display: grid;
-  grid-template-columns: 31px 1fr 9px;
+  grid-template-columns: 31px 1fr auto;
   gap: 9px;
   align-items: center;
   text-align: left;
@@ -156,6 +156,13 @@ button:disabled { cursor: default; opacity: .45; }
 .file-type.pdf { background: #bd3d4b; }
 .file-type.doc, .file-type.docx { background: #2d62bd; }
 .file-type.ppt, .file-type.pptx { background: #c45729; }
+.file-type.jpg, .file-type.jpeg, .file-type.jfif,
+.file-type.png, .file-type.gif, .file-type.webp, .file-type.bmp,
+.file-type.avif, .file-type.apng, .file-type.ico { background: #277a53; }
+.file-type.xls, .file-type.xlsx, .file-type.xlsm, .file-type.xlsb,
+.file-type.csv, .file-type.ods { background: #217346; }
+.file-type.odt, .file-type.rtf, .file-type.txt, .file-type.docm { background: #2d62bd; }
+.file-type.odp, .file-type.pptm, .file-type.pps, .file-type.ppsx { background: #c45729; }
 .file-meta { min-width: 0; }
 .file-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .file-path { display: block; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 10px; }
@@ -163,6 +170,10 @@ button:disabled { cursor: default; opacity: .45; }
 .status-dot.ready { background: var(--ok); }
 .status-dot.converting, .status-dot.queued { background: #d78a19; animation: pulse 1s infinite; }
 .status-dot.error { background: var(--danger); }
+.status-dot.unsupported { background: #7d45a8; box-shadow: 0 0 0 3px #eee3f7; }
+.status-cell { display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
+.unsupported-label { display: none; padding: 3px 5px; color: #69358e; background: #eee3f7; border-radius: 4px; font-size: 9px; font-weight: 700; white-space: nowrap; }
+.unsupported-file .unsupported-label { display: inline-block; }
 
 .thumbnail-shell { display: none; }
 .file-list.thumbnail-view {
@@ -173,6 +184,7 @@ button:disabled { cursor: default; opacity: .45; }
   gap: 9px;
 }
 .thumbnail-view .file-item {
+  position: relative;
   min-width: 0;
   padding: 7px;
   display: grid;
@@ -185,13 +197,15 @@ button:disabled { cursor: default; opacity: .45; }
 .thumbnail-view .file-item.active { box-shadow: inset 0 0 0 2px var(--accent); }
 .thumbnail-view .thumbnail-shell { grid-column: 1 / -1; display: grid; place-items: center; overflow: hidden; background: #e7eaf0; border-radius: 4px; }
 .thumbnail-view .thumbnail-shell .file-type { min-width: 42px; padding: 10px 4px; font-size: 11px; }
-.thumbnail-view .thumbnail-frame { width: 100%; height: 100%; pointer-events: none; border: 0; background: white; }
+.thumbnail-view .thumbnail-frame { width: 100%; height: 100%; object-fit: contain; pointer-events: none; border: 0; background: white; }
 .thumbnail-view > .empty-list { grid-column: 1 / -1; }
 .thumbnail-view .file-item > .file-type { display: none; }
 .thumbnail-view .file-meta { align-self: center; }
 .thumbnail-view .file-name { font-size: 11px; white-space: normal; line-height: 1.35; max-height: 3em; }
 .thumbnail-view .file-path { display: none; }
 .thumbnail-view .status-dot { align-self: center; }
+.thumbnail-view .status-cell { position: absolute; top: 12px; right: 12px; z-index: 2; }
+.thumbnail-view .unsupported-label { padding: 4px 7px; font-size: 10px; box-shadow: 0 2px 8px #30134333; }
 .gallery-mode .file-list.thumbnail-view {
   padding: 18px;
   grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));

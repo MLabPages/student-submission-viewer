@@ -13,7 +13,7 @@ $extension = [System.IO.Path]::GetExtension($Source).ToLowerInvariant()
 $outputDirectory = [System.IO.Path]::GetDirectoryName($Output)
 [System.IO.Directory]::CreateDirectory($outputDirectory) | Out-Null
 
-if ($extension -in @('.doc', '.docx')) {
+if ($extension -in @('.doc', '.docx', '.docm', '.rtf', '.odt', '.txt')) {
     $word = $null
     $document = $null
     try {
@@ -38,7 +38,7 @@ if ($extension -in @('.doc', '.docx')) {
     exit 0
 }
 
-if ($extension -in @('.ppt', '.pptx')) {
+if ($extension -in @('.ppt', '.pptx', '.pptm', '.pps', '.ppsx', '.odp')) {
     $powerPoint = $null
     $presentation = $null
     try {
@@ -55,6 +55,31 @@ if ($extension -in @('.ppt', '.pptx')) {
         if ($powerPoint) {
             $powerPoint.Quit()
             [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($powerPoint)
+        }
+        [GC]::Collect()
+        [GC]::WaitForPendingFinalizers()
+    }
+    exit 0
+}
+
+if ($extension -in @('.xls', '.xlsx', '.xlsm', '.xlsb', '.csv', '.ods')) {
+    $excel = $null
+    $workbook = $null
+    try {
+        $excel = New-Object -ComObject Excel.Application
+        $excel.Visible = $false
+        $excel.DisplayAlerts = $false
+        $excel.AutomationSecurity = 3
+        $workbook = $excel.Workbooks.Open($Source, 0, $true)
+        $workbook.ExportAsFixedFormat(0, $Output)
+    } finally {
+        if ($workbook) {
+            $workbook.Close($false)
+            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($workbook)
+        }
+        if ($excel) {
+            $excel.Quit()
+            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($excel)
         }
         [GC]::Collect()
         [GC]::WaitForPendingFinalizers()

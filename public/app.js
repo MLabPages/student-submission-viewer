@@ -1,5 +1,9 @@
 'use strict';
 
+const IMAGE_EXTENSIONS = new Set([
+  '.jpg', '.jpeg', '.jfif', '.png', '.gif', '.webp', '.bmp', '.avif', '.apng', '.ico'
+]);
+
 const state = {
   files: [],
   filtered: [],
@@ -57,7 +61,10 @@ function renderList() {
     const haystack = `${file.name} ${file.relativePath}`.toLocaleLowerCase('ja');
     return haystack.includes(query);
   });
-  el.fileCount.textContent = `提出物 ${state.filtered.length}件`;
+  const unsupportedVisible = state.filtered.filter((file) => file.status === 'unsupported').length;
+  el.fileCount.textContent = unsupportedVisible
+    ? `提出物 ${state.filtered.length}件・未対応 ${unsupportedVisible}件`
+    : `提出物 ${state.filtered.length}件`;
   el.fileList.classList.toggle('thumbnail-view', state.viewMode === 'thumbnail');
   if (!state.filtered.length) {
     el.fileList.innerHTML = '<div class="empty-list">該当する提出物がありません</div>';
@@ -68,9 +75,9 @@ function renderList() {
   const fragment = document.createDocumentFragment();
   for (const file of state.filtered) {
     const button = document.createElement('button');
-    button.className = `file-item${file.id === state.currentId ? ' active' : ''}`;
+    button.className = `file-item${file.id === state.currentId ? ' active' : ''}${file.status === 'unsupported' ? ' unsupported-file' : ''}`;
     button.dataset.id = file.id;
-    const type = file.ext.slice(1).toUpperCase();
+    const type = file.ext ? file.ext.slice(1).toUpperCase() : 'FILE';
     button.innerHTML = `
       <span class="thumbnail-shell"><span class="file-type ${file.ext.slice(1)}">${type}</span></span>
       <span class="file-type ${file.ext.slice(1)}">${type}</span>
@@ -78,7 +85,10 @@ function renderList() {
         <strong class="file-name"></strong>
         <span class="file-path"></span>
       </span>
-      <span class="status-dot ${file.status}" title="${statusLabel(file.status)}"></span>`;
+      <span class="status-cell">
+        <span class="status-dot ${file.status}" title="${statusLabel(file.status)}"></span>
+        <span class="unsupported-label">未対応</span>
+      </span>`;
     button.querySelector('.file-name').textContent = file.name;
     button.querySelector('.file-path').textContent = file.relativePath;
     ensureThumbnail(button, file);
@@ -97,13 +107,22 @@ function ensureThumbnail(button, file) {
   const shell = button.querySelector('.thumbnail-shell');
   if (!shell || shell.querySelector('.thumbnail-frame')) return;
   shell.textContent = '';
-  const frame = document.createElement('iframe');
-  frame.className = 'thumbnail-frame';
-  frame.tabIndex = -1;
-  frame.setAttribute('aria-hidden', 'true');
-  frame.loading = 'lazy';
-  frame.src = `/api/preview/${file.id}#page=1&view=FitH&toolbar=0&navpanes=0&scrollbar=0`;
-  shell.appendChild(frame);
+  if (IMAGE_EXTENSIONS.has(file.ext)) {
+    const image = document.createElement('img');
+    image.className = 'thumbnail-frame';
+    image.alt = '';
+    image.loading = 'lazy';
+    image.src = `/api/preview/${file.id}`;
+    shell.appendChild(image);
+  } else {
+    const frame = document.createElement('iframe');
+    frame.className = 'thumbnail-frame';
+    frame.tabIndex = -1;
+    frame.setAttribute('aria-hidden', 'true');
+    frame.loading = 'lazy';
+    frame.src = `/api/preview/${file.id}#page=1&view=FitH&toolbar=0&navpanes=0&scrollbar=0`;
+    shell.appendChild(frame);
+  }
 }
 
 function renderProgress() {
@@ -112,9 +131,9 @@ function renderProgress() {
     el.conversionProgress.classList.add('hidden');
     return;
   }
-  const counts = { ready: 0, waiting: 0, queued: 0, converting: 0, error: 0 };
+  const counts = { ready: 0, waiting: 0, queued: 0, converting: 0, error: 0, unsupported: 0 };
   for (const file of state.files) counts[file.status] = (counts[file.status] || 0) + 1;
-  const finished = counts.ready + counts.error;
+  const finished = counts.ready + counts.error + counts.unsupported;
   el.conversionProgress.classList.remove('hidden');
   el.progressBar.style.width = `${Math.round((finished / total) * 100)}%`;
   const pending = counts.waiting + counts.queued;
@@ -122,6 +141,7 @@ function renderProgress() {
   if (counts.converting) details.push(`変換中 ${counts.converting}`);
   if (pending) details.push(`待機 ${pending}`);
   if (counts.error) details.push(`エラー ${counts.error}`);
+  if (counts.unsupported) details.push(`未対応 ${counts.unsupported}`);
   el.progressText.textContent = details.join('・');
 }
 
@@ -132,6 +152,7 @@ function updateListStatuses() {
     const dot = button.querySelector('.status-dot');
     dot.className = `status-dot ${file.status}`;
     dot.title = statusLabel(file.status);
+    button.classList.toggle('unsupported-file', file.status === 'unsupported');
     ensureThumbnail(button, file);
   }
 }
@@ -190,7 +211,7 @@ function setGalleryMode(enabled) {
 function statusLabel(status) {
   return {
     ready: '表示準備済み', waiting: '未変換', queued: '変換待ち',
-    converting: '変換中', error: '変換エラー'
+    converting: '変換中', error: '変換エラー', unsupported: '未対応形式（元ファイルで確認）'
   }[status] || status;
 }
 
@@ -241,9 +262,11 @@ function showPreparing(file) {
   el.placeholder.classList.add('hidden');
   el.previewError.classList.add('hidden');
   el.loading.classList.remove('hidden');
-  el.loadingMessage.textContent = file.ext === '.pdf'
-    ? 'PDFを読み込んでいます'
-    : `${file.ext.startsWith('.doc') ? 'Word' : 'PowerPoint'}をPDFに変換中です`;
+  el.loadingMessage.textContent = IMAGE_EXTENSIONS.has(file.ext)
+    ? '画像を読み込んでいます'
+    : file.ext === '.pdf'
+      ? 'PDFを読み込んでいます'
+      : `${file.ext.startsWith('.doc') ? 'Word' : 'PowerPoint'}をPDFに変換中です`;
 }
 
 async function waitForPreview(file) {
@@ -255,7 +278,9 @@ async function waitForPreview(file) {
       await refreshStatus();
       el.loading.classList.add('hidden');
       el.previewError.classList.add('hidden');
-      el.preview.src = `/api/preview/${file.id}#view=FitH`;
+      el.preview.src = IMAGE_EXTENSIONS.has(file.ext)
+        ? `/api/preview/${file.id}`
+        : `/api/preview/${file.id}#view=FitH`;
       el.preview.style.display = 'block';
       return;
     }
@@ -319,6 +344,10 @@ async function loadFolder() {
     renderList();
     renderProgress();
     startProgressPolling();
+    const unsupportedCount = state.files.filter((file) => file.status === 'unsupported').length;
+    if (unsupportedCount) {
+      showToast(`未対応形式が${unsupportedCount}件あります。紫の印のファイルも必ず確認してください。`);
+    }
     if (state.files.length) await selectFile(state.files[0].id);
     else showToast('対応するファイルが見つかりませんでした。');
   } catch (error) {

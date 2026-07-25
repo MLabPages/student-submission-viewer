@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('assert');
+const fsp = require('fs').promises;
 const path = require('path');
 
 process.env.PORT = '0';
@@ -9,6 +10,7 @@ const { startServer, stopServer } = require('../server');
 
 (async () => {
   const { url, port } = await startServer();
+  const fixtureRoot = path.join(__dirname, '..', 'tmp', 'smoke-images');
   try {
     assert.ok(port > 0, 'A local port was not assigned.');
 
@@ -30,9 +32,42 @@ const { startServer, stopServer } = require('../server');
     const status = await statusResponse.json();
     assert.ok(Array.isArray(status.files));
 
+    await fsp.rm(fixtureRoot, { recursive: true, force: true });
+    await fsp.mkdir(fixtureRoot, { recursive: true });
+    await fsp.writeFile(path.join(fixtureRoot, 'sample.png'), Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+X5WwWQAAAABJRU5ErkJggg==',
+      'base64'
+    ));
+    await fsp.writeFile(path.join(fixtureRoot, 'sample.jpg'), Buffer.from(
+      '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAEf/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABBQJ//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAwEBPwF//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAgEBPwF//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAGPwJ//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPyF//9oADAMBAAIAAwAAABAf/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAwEBPxB//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAgEBPxB//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxB//9k=',
+      'base64'
+    ));
+    await fsp.writeFile(path.join(fixtureRoot, 'unreadable.pages'), 'unsupported fixture');
+
+    const scanResponse = await fetch(`${url}/api/scan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder: fixtureRoot, recursive: true })
+    });
+    assert.strictEqual(scanResponse.status, 200);
+    const scan = await scanResponse.json();
+    assert.deepStrictEqual(scan.files.map((file) => file.ext).sort(), ['.jpg', '.pages', '.png']);
+    assert.strictEqual(scan.files.filter((file) => file.status === 'ready').length, 2);
+    assert.strictEqual(scan.files.filter((file) => file.status === 'unsupported').length, 1);
+
+    for (const file of scan.files.filter((item) => item.status === 'ready')) {
+      const previewResponse = await fetch(`${url}/api/preview/${file.id}`);
+      assert.strictEqual(previewResponse.status, 200);
+      assert.strictEqual(previewResponse.headers.get('content-type'), file.ext === '.png' ? 'image/png' : 'image/jpeg');
+    }
+    const unsupported = scan.files.find((file) => file.status === 'unsupported');
+    const unsupportedResponse = await fetch(`${url}/api/preview/${unsupported.id}`);
+    assert.strictEqual(unsupportedResponse.status, 415);
+
     console.log(`Smoke test passed: ${url}`);
   } finally {
     await stopServer();
+    await fsp.rm(fixtureRoot, { recursive: true, force: true });
   }
 })().catch((error) => {
   console.error(error);
