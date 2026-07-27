@@ -13,6 +13,7 @@ const state = {
   progressTimer: null,
   saveTimer: null,
   viewMode: localStorage.getItem('submissionViewerMode') === 'thumbnail' ? 'thumbnail' : 'list',
+  notesVisible: localStorage.getItem('submissionViewerNotesVisible') !== 'false',
   galleryMode: false,
   panelWidths: {
     list: Number(localStorage.getItem('submissionViewerListWidth')) || 280,
@@ -22,7 +23,7 @@ const state = {
 
 const el = Object.fromEntries([
   'chooseFolder', 'folderPath', 'recursive', 'loadFolder', 'fileCount', 'search', 'needsReview', 'needsReviewCount',
-  'listView', 'thumbnailView', 'galleryMode', 'fileSplitter',
+  'listView', 'thumbnailView', 'galleryMode', 'notesToggle', 'fileSplitter',
   'conversionProgress', 'progressBar', 'progressText', 'workspace',
   'fileList', 'previous', 'next', 'currentName', 'position', 'openOriginal',
   'preview', 'placeholder', 'loading', 'loadingMessage', 'previewError',
@@ -185,7 +186,7 @@ function defaultPanelWidth(mode = state.viewMode) {
 function clampPanelWidth(width) {
   const workspaceWidth = el.workspace.getBoundingClientRect().width;
   const minimum = state.viewMode === 'thumbnail' ? 360 : 230;
-  const reserved = window.innerWidth <= 1050 ? 410 : 640;
+  const reserved = window.innerWidth <= 1050 ? 410 : (state.notesVisible ? 640 : 370);
   const maximum = Math.max(minimum, workspaceWidth - reserved);
   return Math.round(Math.min(Math.max(width, minimum), maximum));
 }
@@ -215,6 +216,16 @@ function setGalleryMode(enabled) {
   if (enabled && state.viewMode !== 'thumbnail') setViewMode('thumbnail');
   else renderList();
   if (!enabled) applyPanelWidth();
+}
+
+function setNotesVisible(visible) {
+  state.notesVisible = visible;
+  el.workspace.classList.toggle('notes-hidden', !visible);
+  el.notesToggle.classList.toggle('active', !visible);
+  el.notesToggle.setAttribute('aria-pressed', String(visible));
+  el.notesToggle.textContent = visible ? '確認メモを隠す' : '確認メモを表示';
+  localStorage.setItem('submissionViewerNotesVisible', String(visible));
+  applyPanelWidth();
 }
 
 function statusLabel(status) {
@@ -434,6 +445,7 @@ el.needsReview.addEventListener('change', () => {
 el.listView.addEventListener('click', () => { setGalleryMode(false); setViewMode('list'); });
 el.thumbnailView.addEventListener('click', () => { setGalleryMode(false); setViewMode('thumbnail'); });
 el.galleryMode.addEventListener('click', () => setGalleryMode(!state.galleryMode));
+el.notesToggle.addEventListener('click', () => setNotesVisible(!state.notesVisible));
 el.fileSplitter.addEventListener('pointerdown', (event) => {
   if (state.galleryMode) return;
   event.preventDefault();
@@ -501,5 +513,6 @@ async function restoreOpenFolder() {
 }
 
 el.needsReview.checked = localStorage.getItem('submissionViewerNeedsReview') === 'true';
+setNotesVisible(state.notesVisible);
 setViewMode(state.viewMode);
 restoreOpenFolder();
