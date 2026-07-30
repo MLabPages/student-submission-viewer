@@ -45,6 +45,9 @@ const { startServer, stopServer } = require('../server');
       'base64'
     ));
     await fsp.writeFile(path.join(fixtureRoot, 'unreadable.pages'), 'unsupported fixture');
+    await fsp.writeFile(path.join(fixtureRoot, 'sample.gdoc'), JSON.stringify({
+      url: 'https://docs.google.com/document/d/example-id/edit'
+    }));
 
     const scanResponse = await fetch(`${url}/api/scan`, {
       method: 'POST',
@@ -53,9 +56,10 @@ const { startServer, stopServer } = require('../server');
     });
     assert.strictEqual(scanResponse.status, 200);
     const scan = await scanResponse.json();
-    assert.deepStrictEqual(scan.files.map((file) => file.ext).sort(), ['.jpg', '.pages', '.png']);
+    assert.deepStrictEqual(scan.files.map((file) => file.ext).sort(), ['.gdoc', '.jpg', '.pages', '.png']);
     assert.strictEqual(scan.files.filter((file) => file.status === 'ready').length, 2);
     assert.strictEqual(scan.files.filter((file) => file.status === 'unsupported').length, 1);
+    assert.strictEqual(scan.files.filter((file) => file.status === 'online').length, 1);
 
     for (const file of scan.files.filter((item) => item.status === 'ready')) {
       const previewResponse = await fetch(`${url}/api/preview/${file.id}`);
@@ -65,6 +69,9 @@ const { startServer, stopServer } = require('../server');
     const unsupported = scan.files.find((file) => file.status === 'unsupported');
     const unsupportedResponse = await fetch(`${url}/api/preview/${unsupported.id}`);
     assert.strictEqual(unsupportedResponse.status, 415);
+    const googleFile = scan.files.find((file) => file.status === 'online');
+    const googleResponse = await fetch(`${url}/api/preview/${googleFile.id}`);
+    assert.strictEqual(googleResponse.status, 409);
 
     console.log(`Smoke test passed: ${url}`);
   } finally {

@@ -178,9 +178,12 @@ button:disabled { cursor: default; opacity: .45; }
 .status-dot.converting, .status-dot.queued { background: #d78a19; animation: pulse 1s infinite; }
 .status-dot.error { background: var(--danger); }
 .status-dot.unsupported { background: #7d45a8; box-shadow: 0 0 0 3px #eee3f7; }
+.status-dot.online { background: #4285f4; box-shadow: 0 0 0 3px #e2ecff; }
 .status-cell { display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
 .unsupported-label { display: none; padding: 3px 5px; color: #69358e; background: #eee3f7; border-radius: 4px; font-size: 9px; font-weight: 700; white-space: nowrap; }
 .unsupported-file .unsupported-label { display: inline-block; }
+.google-label { display: none; padding: 3px 5px; color: #1f5fbf; background: #e2ecff; border-radius: 4px; font-size: 9px; font-weight: 700; white-space: nowrap; }
+.google-file .google-label { display: inline-block; }
 
 .thumbnail-shell { display: none; }
 .file-list.thumbnail-view {
@@ -213,6 +216,7 @@ button:disabled { cursor: default; opacity: .45; }
 .thumbnail-view .status-dot { align-self: center; }
 .thumbnail-view .status-cell { position: absolute; top: 12px; right: 12px; z-index: 2; }
 .thumbnail-view .unsupported-label { padding: 4px 7px; font-size: 10px; box-shadow: 0 2px 8px #30134333; }
+.thumbnail-view .google-label { padding: 4px 7px; font-size: 10px; box-shadow: 0 2px 8px #173d8133; }
 .gallery-mode .file-list.thumbnail-view {
   padding: 18px;
   grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));

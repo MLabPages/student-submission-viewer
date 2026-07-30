@@ -80,7 +80,7 @@ function renderList() {
   const fragment = document.createDocumentFragment();
   for (const file of state.filtered) {
     const button = document.createElement('button');
-    button.className = `file-item${file.id === state.currentId ? ' active' : ''}${file.status === 'unsupported' ? ' unsupported-file' : ''}`;
+    button.className = `file-item${file.id === state.currentId ? ' active' : ''}${file.status === 'unsupported' ? ' unsupported-file' : ''}${file.isGoogleShortcut ? ' google-file' : ''}`;
     button.dataset.id = file.id;
     const type = file.ext ? file.ext.slice(1).toUpperCase() : 'FILE';
     button.innerHTML = `
@@ -93,6 +93,7 @@ function renderList() {
       <span class="status-cell">
         <span class="status-dot ${file.status}" title="${statusLabel(file.status)}"></span>
         <span class="unsupported-label">未対応</span>
+        <span class="google-label">Google</span>
       </span>`;
     button.querySelector('.file-name').textContent = file.name;
     button.querySelector('.file-path').textContent = file.relativePath;
@@ -163,6 +164,7 @@ function updateListStatuses() {
     dot.className = `status-dot ${file.status}`;
     dot.title = statusLabel(file.status);
     button.classList.toggle('unsupported-file', file.status === 'unsupported');
+    button.classList.toggle('google-file', file.isGoogleShortcut);
     ensureThumbnail(button, file);
   }
 }
@@ -232,6 +234,7 @@ function statusLabel(status) {
   return {
     ready: '表示準備済み', waiting: '未変換', queued: '変換待ち',
     converting: '変換中', error: '変換エラー', unsupported: '未対応形式（元ファイルで確認）'
+    , online: 'Google Drive上の原本（Googleで開く）'
   }[status] || status;
 }
 
@@ -267,6 +270,7 @@ async function selectFile(id) {
   document.querySelector(`.file-item[data-id="${id}"]`)?.scrollIntoView({ block: 'nearest' });
   el.currentName.textContent = file.relativePath;
   el.openOriginal.disabled = false;
+  el.openOriginal.textContent = file.isGoogleShortcut ? 'Googleで開く' : '元ファイルを開く';
   loadEvaluation(file);
   showPreparing(file);
 

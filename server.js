@@ -37,12 +37,14 @@ const IMAGE_MIME_TYPES = new Map([
 const WORD_FORMATS = ['.doc', '.docx', '.docm', '.rtf', '.odt', '.txt'];
 const POWERPOINT_FORMATS = ['.ppt', '.pptx', '.pptm', '.pps', '.ppsx', '.odp'];
 const SPREADSHEET_FORMATS = ['.xls', '.xlsx', '.xlsm', '.xlsb', '.csv', '.ods'];
+const GOOGLE_SHORTCUT_FORMATS = new Set(['.gdoc', '.gsheet', '.gslides']);
 const DIRECT_PREVIEW = new Set(['.pdf', ...IMAGE_MIME_TYPES.keys()]);
 const SUPPORTED = new Set([
   ...DIRECT_PREVIEW,
   ...WORD_FORMATS,
   ...POWERPOINT_FORMATS,
-  ...SPREADSHEET_FORMATS
+  ...SPREADSHEET_FORMATS,
+  ...GOOGLE_SHORTCUT_FORMATS
 ]);
 const IGNORED_FILES = new Set(['thumbs.db', 'desktop.ini', '.ds_store']);
 
@@ -114,10 +116,25 @@ function publicFile(file) {
     size: file.size,
     mtimeMs: file.mtimeMs,
     supported: file.supported,
-    status: !file.supported ? 'unsupported' : cached ? 'ready' : (job?.status || 'waiting'),
+    isGoogleShortcut: Boolean(file.googleUrl),
+    status: file.googleUrl ? 'online' : !file.supported ? 'unsupported' : cached ? 'ready' : (job?.status || 'waiting'),
     error: job?.error || '',
     evaluation: evaluations[file.path] || {}
   };
+}
+
+async function readGoogleShortcutUrl(filePath) {
+  try {
+    const text = await fsp.readFile(filePath, 'utf8');
+    const value = JSON.parse(text);
+    const url = new URL(value.url);
+    const allowed = url.protocol === 'https:' && (
+      url.hostname === 'docs.google.com' || url.hostname === 'drive.google.com'
+    );
+    return allowed ? url.toString() : '';
+  } catch {
+    return '';
+  }
 }
 
 async function scanDirectory(root, recursive) {
@@ -136,13 +153,15 @@ async function scanDirectory(root, recursive) {
       if (entry.name.startsWith('~$') || IGNORED_FILES.has(entry.name.toLowerCase())) continue;
       const ext = path.extname(entry.name).toLowerCase();
       const stat = await fsp.stat(absolutePath);
+      const googleUrl = GOOGLE_SHORTCUT_FORMATS.has(ext) ? await readGoogleShortcutUrl(absolutePath) : '';
       found.push({
         id: fileId(absolutePath),
         path: absolutePath,
         name: entry.name,
         relativePath: path.relative(root, absolutePath),
         ext,
-        supported: SUPPORTED.has(ext),
+        googleUrl,
+        supported: GOOGLE_SHORTCUT_FORMATS.has(ext) ? Boolean(googleUrl) : SUPPORTED.has(ext),
         size: stat.size,
         mtimeMs: stat.mtimeMs
       });
@@ -184,7 +203,7 @@ function runPowerShell(script, args = [], options = {}) {
 }
 
 function enqueue(file, priority = false) {
-  if (!file || !file.supported || DIRECT_PREVIEW.has(file.ext) || fs.existsSync(cachePathFor(file))) return;
+  if (!file || file.googleUrl || !file.supported || DIRECT_PREVIEW.has(file.ext) || fs.existsSync(cachePathFor(file))) return;
   const existing = jobs.get(file.id);
   if (existing?.status === 'converting') return;
   if (existing?.status === 'queued') {
@@ -368,6 +387,11 @@ const server = http.createServer(async (req, res) => {
       const id = pathname.slice('/api/preview/'.length);
       const file = findFile(id);
       if (!file) return sendJson(res, 404, { error: 'ファイルが見つかりません。' });
+      if (file.googleUrl) {
+        return sendJson(res, 409, {
+          error: 'Google Drive上の原本です。「Googleで開く」からブラウザーで確認してください。'
+        });
+      }
       if (!file.supported) {
         return sendJson(res, 415, {
           error: `${file.ext || '拡張子なし'} はプレビュー未対応です。見落としを防ぐため一覧に表示しています。「元ファイルを開く」で確認してください。`
@@ -391,7 +415,7 @@ const server = http.createServer(async (req, res) => {
       const id = pathname.slice('/api/open/'.length);
       const file = findFile(id);
       if (!file) return sendJson(res, 404, { error: 'ファイルが見つかりません。' });
-      runPowerShell(path.join(SCRIPTS_DIR, 'open-file.ps1'), ['-Path', file.path], { visible: true })
+      runPowerShell(path.join(SCRIPTS_DIR, 'open-file.ps1'), ['-Path', file.googleUrl || file.path], { visible: true })
         .catch((error) => console.error(error));
       return sendJson(res, 200, { ok: true });
     }

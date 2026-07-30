@@ -64,8 +64,11 @@
 - Word・文書: `.docm`, `.rtf`, `.odt`, `.txt`
 - PowerPoint・スライド: `.pptm`, `.pps`, `.ppsx`, `.odp`
 - Excel・表計算: `.xls`, `.xlsx`, `.xlsm`, `.xlsb`, `.csv`, `.ods`
+- Google Drive参照: `.gdoc`, `.gsheet`, `.gslides`（一覧から「Googleで開く」）
 
 未対応形式も一覧から除外しません。件数を画面上部に出し、各ファイルへ紫色の「未対応」ラベルを表示して、元ファイルを開いて確認できます。Apple Pages（`.pages`）／Keynote（`.key`）／Numbers（`.numbers`）、iPhone写真のHEIC／HEIF、ZIP、TIFFなどが含まれていても、提出物の存在を見落とさない設計です。
+
+Google Driveの `.gdoc`／`.gsheet`／`.gslides` はGoogle上の原本URLを持つ参照ファイルです。アプリ内には表示せず、青色の「Google」ラベルと「Googleで開く」ボタンで既定ブラウザーの原本を開きます。アプリ内でPDF化・サムネイル表示するには、Googleアカウント連携を別途追加する必要があります。
 
 WordとPowerPointの変換には、このPCにインストールされているMicrosoft Officeを使います。提出物は外部へ送信されません。元ファイルは変更しません。
 
