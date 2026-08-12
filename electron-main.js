@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('fs');
 const path = require('path');
 const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 
@@ -8,6 +9,30 @@ const { startServer, stopServer } = require('./server');
 
 let mainWindow = null;
 let serverUrl = '';
+let lastSubmissionFolder = '';
+
+function getSettingsPath() {
+  return path.join(app.getPath('userData'), 'settings.json');
+}
+
+function loadLastSubmissionFolder() {
+  try {
+    const settings = JSON.parse(fs.readFileSync(getSettingsPath(), 'utf8'));
+    if (typeof settings.lastSubmissionFolder === 'string' && fs.existsSync(settings.lastSubmissionFolder)) {
+      lastSubmissionFolder = settings.lastSubmissionFolder;
+    }
+  } catch {
+    // 初回起動時や設定ファイルが壊れている場合は、既定のダウンロードフォルダを使う。
+  }
+}
+
+function saveLastSubmissionFolder(folderPath) {
+  try {
+    fs.writeFileSync(getSettingsPath(), JSON.stringify({ lastSubmissionFolder: folderPath }), 'utf8');
+  } catch {
+    // 設定を保存できなくても、今回起動中のフォルダ選択は継続する。
+  }
+}
 
 const hasLock = app.requestSingleInstanceLock();
 if (!hasLock) app.quit();
@@ -20,6 +45,7 @@ function focusMainWindow() {
 }
 
 async function createWindow() {
+  loadLastSubmissionFolder();
   const started = await startServer();
   serverUrl = started.url;
   mainWindow = new BrowserWindow({
@@ -49,9 +75,14 @@ ipcMain.handle('desktop:choose-folder', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: '提出物フォルダを選択',
     buttonLabel: 'このフォルダを選択',
+    defaultPath: lastSubmissionFolder || app.getPath('downloads'),
     properties: ['openDirectory']
   });
-  return result.canceled ? '' : result.filePaths[0];
+  if (result.canceled) return '';
+
+  lastSubmissionFolder = result.filePaths[0];
+  saveLastSubmissionFolder(lastSubmissionFolder);
+  return lastSubmissionFolder;
 });
 
 app.on('second-instance', focusMainWindow);
