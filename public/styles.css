@@ -120,6 +120,9 @@ button:disabled { cursor: default; opacity: .45; }
 .list-heading-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 9px; }
 .panel-heading strong { display: block; font-size: 14px; }
 .panel-heading input { width: 100%; padding: 7px 9px; border: 1px solid #ccd3df; border-radius: 6px; }
+.sort-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+.sort-control { display: grid; gap: 3px; color: var(--muted); font-size: 10px; }
+.sort-control select { width: 100%; min-width: 0; padding: 6px 5px; color: var(--ink); background: white; border: 1px solid #ccd3df; border-radius: 6px; font-size: 11px; }
 .review-filter { display: flex; align-items: center; gap: 3px; margin-top: 8px; color: #5c4a6f; font-size: 11px; cursor: pointer; }
 .review-filter input { accent-color: #7d45a8; }
 .review-filter span { min-width: 18px; color: #69358e; font-weight: 700; }

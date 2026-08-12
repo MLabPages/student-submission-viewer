@@ -37,6 +37,26 @@
           </div>
         </div>
         <input id="search" type="search" placeholder="学生名・ファイル名で絞り込み">
+        <div class="sort-controls" aria-label="提出物の並び替え">
+          <label class="sort-control">並び替え
+            <select id="sortBy">
+              <option value="name">ファイル名</option>
+              <option value="id">ID・学籍番号</option>
+              <option value="personName">氏名</option>
+              <option value="type">種類</option>
+              <option value="folder">フォルダ</option>
+              <option value="status">確認状態</option>
+              <option value="mtime">更新日時</option>
+              <option value="size">ファイルサイズ</option>
+            </select>
+          </label>
+          <label class="sort-control">順序
+            <select id="sortOrder">
+              <option value="asc">昇順</option>
+              <option value="desc">降順</option>
+            </select>
+          </label>
+        </div>
         <label class="review-filter"><input id="needsReview" type="checkbox"> エラー・未対応のみ <span id="needsReviewCount">0</span></label>
         <div id="conversionProgress" class="conversion-progress hidden" aria-live="polite">
           <div class="progress-track"><span id="progressBar"></span></div>

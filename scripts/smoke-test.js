@@ -28,6 +28,8 @@ const { startServer, stopServer } = require('../server');
     assert.ok(page.includes('id="galleryMode"'), 'Gallery mode switch is missing.');
     assert.ok(page.includes('id="needsReview"'), 'Manual-review filter is missing.');
     assert.ok(page.includes('id="notesToggle"'), 'Notes visibility toggle is missing.');
+    assert.ok(page.includes('id="sortBy"'), 'Sort selector is missing.');
+    assert.ok(page.includes('id="sortOrder"'), 'Sort order selector is missing.');
 
     const statusResponse = await fetch(`${url}/api/status`);
     assert.strictEqual(statusResponse.status, 200);

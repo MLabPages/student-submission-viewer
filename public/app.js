@@ -3,6 +3,7 @@
 const IMAGE_EXTENSIONS = new Set([
   '.jpg', '.jpeg', '.jfif', '.png', '.gif', '.webp', '.bmp', '.avif', '.apng', '.ico'
 ]);
+const SORT_OPTIONS = new Set(['name', 'id', 'personName', 'type', 'folder', 'status', 'mtime', 'size']);
 
 const state = {
   files: [],
@@ -15,6 +16,8 @@ const state = {
   viewMode: localStorage.getItem('submissionViewerMode') === 'thumbnail' ? 'thumbnail' : 'list',
   notesVisible: localStorage.getItem('submissionViewerNotesVisible') !== 'false',
   galleryMode: false,
+  sortBy: localStorage.getItem('submissionViewerSortBy') || 'name',
+  sortOrder: localStorage.getItem('submissionViewerSortOrder') === 'desc' ? 'desc' : 'asc',
   panelWidths: {
     list: Number(localStorage.getItem('submissionViewerListWidth')) || 280,
     thumbnail: Number(localStorage.getItem('submissionViewerThumbnailWidth')) || 560
@@ -23,6 +26,7 @@ const state = {
 
 const el = Object.fromEntries([
   'chooseFolder', 'folderPath', 'recursive', 'loadFolder', 'fileCount', 'search', 'needsReview', 'needsReviewCount',
+  'sortBy', 'sortOrder',
   'listView', 'thumbnailView', 'galleryMode', 'notesToggle', 'fileSplitter',
   'conversionProgress', 'progressBar', 'progressText', 'workspace',
   'fileList', 'previous', 'next', 'currentName', 'position', 'openOriginal',
@@ -56,6 +60,59 @@ function currentIndex() {
   return state.filtered.findIndex((file) => file.id === state.currentId);
 }
 
+function fileStem(file) {
+  return file.name.replace(/\.[^.\\/]+$/, '');
+}
+
+function extractId(file) {
+  const stem = fileStem(file);
+  const labeled = stem.match(/(?:学籍番号|学生番号|ID|id)[\s_：:#-]*([A-Za-z0-9-]+)/u);
+  if (labeled) return labeled[1].toLocaleLowerCase('ja');
+  const standalone = stem.match(/(?<![A-Za-z0-9])\d{4,}(?![A-Za-z0-9])/u);
+  return standalone ? standalone[0] : '';
+}
+
+function extractPersonName(file) {
+  const stem = fileStem(file)
+    .replace(/(?:学籍番号|学生番号|ID|id)[\s_：:#-]*[A-Za-z0-9-]+/gu, '')
+    .replace(/\d{4,}/gu, '')
+    .replace(/[()［］【】「」『』]/gu, ' ');
+  const candidates = stem.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー]{2,}/gu) || [];
+  return candidates.sort((a, b) => b.length - a.length || a.localeCompare(b, 'ja'))[0] || stem.trim();
+}
+
+function sortValue(file) {
+  const evaluationStatus = state.evaluations[file.id]?.status || '未確認';
+  switch (state.sortBy) {
+    case 'id': return extractId(file);
+    case 'personName': return extractPersonName(file);
+    case 'type': return file.ext.slice(1).toLocaleLowerCase('ja');
+    case 'folder': return file.relativePath.includes('\\') ? file.relativePath.slice(0, file.relativePath.lastIndexOf('\\')) : '';
+    case 'status': return evaluationStatus;
+    case 'mtime': return file.mtimeMs;
+    case 'size': return file.size;
+    case 'name':
+    default: return file.name;
+  }
+}
+
+function compareFiles(a, b) {
+  const aValue = sortValue(a);
+  const bValue = sortValue(b);
+  const aMissing = aValue === '' || aValue === null || aValue === undefined;
+  const bMissing = bValue === '' || bValue === null || bValue === undefined;
+  if (aMissing !== bMissing) return aMissing ? 1 : -1;
+  let comparison;
+  if (typeof aValue === 'number' && typeof bValue === 'number') {
+    comparison = aValue - bValue;
+  } else {
+    comparison = String(aValue).localeCompare(String(bValue), 'ja', { numeric: true, sensitivity: 'base' });
+  }
+  if (!comparison) comparison = a.name.localeCompare(b.name, 'ja', { numeric: true, sensitivity: 'base' });
+  if (!comparison) comparison = a.id.localeCompare(b.id);
+  return state.sortOrder === 'desc' ? -comparison : comparison;
+}
+
 function renderList() {
   const query = el.search.value.trim().toLocaleLowerCase('ja');
   const reviewOnly = el.needsReview.checked;
@@ -63,7 +120,7 @@ function renderList() {
   state.filtered = state.files.filter((file) => {
     const haystack = `${file.name} ${file.relativePath}`.toLocaleLowerCase('ja');
     return haystack.includes(query) && (!reviewOnly || ['error', 'unsupported'].includes(file.status));
-  });
+  }).sort(compareFiles);
   const unsupportedVisible = state.filtered.filter((file) => file.status === 'unsupported').length;
   el.fileCount.textContent = reviewOnly
     ? `要手動確認 ${state.filtered.length}件`
@@ -230,6 +287,14 @@ function setNotesVisible(visible) {
   applyPanelWidth();
 }
 
+function setSortState() {
+  state.sortBy = el.sortBy.value;
+  state.sortOrder = el.sortOrder.value;
+  localStorage.setItem('submissionViewerSortBy', state.sortBy);
+  localStorage.setItem('submissionViewerSortOrder', state.sortOrder);
+  renderList();
+}
+
 function statusLabel(status) {
   return {
     ready: '表示準備済み', waiting: '未変換', queued: '変換待ち',
@@ -329,7 +394,8 @@ async function refreshStatus() {
     return ['error', 'unsupported'].includes(before) !== ['error', 'unsupported'].includes(file.status);
   });
   updateReviewCount();
-  if (el.needsReview.checked && reviewMembershipChanged) renderList();
+  const sortNeedsRefresh = state.sortBy === 'status' && state.files.some((file) => previousStatuses.get(file.id) !== file.status);
+  if ((el.needsReview.checked && reviewMembershipChanged) || sortNeedsRefresh) renderList();
   else updateListStatuses();
   renderProgress();
 }
@@ -379,7 +445,7 @@ async function loadFolder() {
     if (unsupportedCount) {
       showToast(`未対応形式が${unsupportedCount}件あります。紫の印のファイルも必ず確認してください。`);
     }
-    if (state.files.length) await selectFile(state.files[0].id);
+    if (state.filtered.length) await selectFile(state.filtered[0].id);
     else showToast('対応するファイルが見つかりませんでした。');
   } catch (error) {
     showToast(error.message);
@@ -442,6 +508,8 @@ el.chooseFolder.addEventListener('click', async () => {
 el.loadFolder.addEventListener('click', loadFolder);
 el.folderPath.addEventListener('keydown', (event) => { if (event.key === 'Enter') loadFolder(); });
 el.search.addEventListener('input', renderList);
+el.sortBy.addEventListener('change', setSortState);
+el.sortOrder.addEventListener('change', setSortState);
 el.needsReview.addEventListener('change', () => {
   localStorage.setItem('submissionViewerNeedsReview', String(el.needsReview.checked));
   renderList();
@@ -491,7 +559,11 @@ el.openOriginal.addEventListener('click', async () => {
   catch (error) { showToast(error.message); }
 });
 
-[el.evaluationStatus, el.score, el.note].forEach((input) => input.addEventListener('input', scheduleSave));
+el.evaluationStatus.addEventListener('change', () => {
+  scheduleSave();
+  if (state.sortBy === 'status') renderList();
+});
+[el.score, el.note].forEach((input) => input.addEventListener('input', scheduleSave));
 
 document.addEventListener('keydown', (event) => {
   if (!event.altKey) return;
@@ -510,13 +582,15 @@ async function restoreOpenFolder() {
     renderList();
     renderProgress();
     startProgressPolling();
-    await selectFile(state.files[0].id);
+    await selectFile(state.filtered[0]?.id || state.files[0].id);
   } catch {
     // The screen can still be used by selecting a folder manually.
   }
 }
 
 el.needsReview.checked = localStorage.getItem('submissionViewerNeedsReview') === 'true';
+el.sortBy.value = SORT_OPTIONS.has(state.sortBy) ? state.sortBy : 'name';
+el.sortOrder.value = state.sortOrder;
 setNotesVisible(state.notesVisible);
 setViewMode(state.viewMode);
 restoreOpenFolder();
