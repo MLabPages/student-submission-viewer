@@ -30,9 +30,13 @@ const el = Object.fromEntries([
   'listView', 'thumbnailView', 'galleryMode', 'notesToggle', 'fileSplitter',
   'conversionProgress', 'progressBar', 'progressText', 'workspace',
   'fileList', 'previous', 'next', 'currentName', 'position', 'openOriginal',
-  'preview', 'placeholder', 'loading', 'loadingMessage', 'previewError',
+  'previewStage', 'preview', 'imagePreview', 'placeholder', 'loading', 'loadingMessage', 'previewError',
   'evaluationStatus', 'score', 'note', 'saveState', 'toast'
 ].map((id) => [id, document.getElementById(id)]));
+
+const imageZoom = { scale: 1, x: 0, y: 0 };
+const imagePointers = new Map();
+let imageGesture = null;
 
 async function api(url, options = {}) {
   const response = await fetch(url, {
@@ -50,6 +54,149 @@ function showToast(message) {
   el.toast.classList.remove('hidden');
   clearTimeout(showToast.timer);
   showToast.timer = setTimeout(() => el.toast.classList.add('hidden'), 2600);
+}
+
+function imagePanLimits(scale = imageZoom.scale) {
+  const stage = el.previewStage.getBoundingClientRect();
+  const naturalWidth = el.imagePreview.naturalWidth || stage.width;
+  const naturalHeight = el.imagePreview.naturalHeight || stage.height;
+  const fit = Math.min(stage.width / naturalWidth, stage.height / naturalHeight);
+  return {
+    x: Math.max(0, (naturalWidth * fit * scale - stage.width) / 2),
+    y: Math.max(0, (naturalHeight * fit * scale - stage.height) / 2)
+  };
+}
+
+function clampImagePan(x, y, scale = imageZoom.scale) {
+  const limits = imagePanLimits(scale);
+  return {
+    x: Math.max(-limits.x, Math.min(limits.x, x)),
+    y: Math.max(-limits.y, Math.min(limits.y, y))
+  };
+}
+
+function applyImageZoom() {
+  const pan = clampImagePan(imageZoom.x, imageZoom.y);
+  imageZoom.x = pan.x;
+  imageZoom.y = pan.y;
+  el.imagePreview.style.transform = `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px)) scale(${imageZoom.scale})`;
+  el.imagePreview.style.cursor = imageZoom.scale > 1 ? 'grab' : 'zoom-in';
+}
+
+function resetImageZoom() {
+  imageZoom.scale = 1;
+  imageZoom.x = 0;
+  imageZoom.y = 0;
+  imagePointers.clear();
+  imageGesture = null;
+  applyImageZoom();
+}
+
+function zoomImageAt(factor, clientX, clientY) {
+  const stage = el.previewStage.getBoundingClientRect();
+  const oldScale = imageZoom.scale;
+  const nextScale = Math.max(1, Math.min(5, oldScale * factor));
+  const point = {
+    x: clientX - (stage.left + stage.width / 2),
+    y: clientY - (stage.top + stage.height / 2)
+  };
+  const ratio = nextScale / oldScale;
+  imageZoom.x = point.x - ratio * (point.x - imageZoom.x);
+  imageZoom.y = point.y - ratio * (point.y - imageZoom.y);
+  imageZoom.scale = nextScale;
+  if (nextScale === 1) {
+    imageZoom.x = 0;
+    imageZoom.y = 0;
+  }
+  applyImageZoom();
+}
+
+function imagePointerCenter() {
+  const points = [...imagePointers.values()];
+  return {
+    x: (points[0].x + points[1].x) / 2,
+    y: (points[0].y + points[1].y) / 2
+  };
+}
+
+function imagePointerDistance() {
+  const points = [...imagePointers.values()];
+  return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+}
+
+function startImagePan(pointer) {
+  imageGesture = {
+    type: 'pan',
+    pointerId: pointer.id,
+    startX: pointer.x,
+    startY: pointer.y,
+    startPanX: imageZoom.x,
+    startPanY: imageZoom.y
+  };
+}
+
+function startImagePinch() {
+  const center = imagePointerCenter();
+  imageGesture = {
+    type: 'pinch',
+    startDistance: Math.max(imagePointerDistance(), 1),
+    startCenter: center,
+    startScale: imageZoom.scale,
+    startPanX: imageZoom.x,
+    startPanY: imageZoom.y
+  };
+}
+
+function handleImagePointerDown(event) {
+  if (event.pointerType === 'mouse' && event.button !== 0) return;
+  event.preventDefault();
+  el.imagePreview.setPointerCapture(event.pointerId);
+  imagePointers.set(event.pointerId, { id: event.pointerId, x: event.clientX, y: event.clientY });
+  if (imagePointers.size >= 2) startImagePinch();
+  else startImagePan({ id: event.pointerId, x: event.clientX, y: event.clientY });
+}
+
+function handleImagePointerMove(event) {
+  if (!imagePointers.has(event.pointerId)) return;
+  event.preventDefault();
+  imagePointers.set(event.pointerId, { id: event.pointerId, x: event.clientX, y: event.clientY });
+  if (imagePointers.size >= 2) {
+    if (imageGesture?.type !== 'pinch') startImagePinch();
+    const center = imagePointerCenter();
+    const stage = el.previewStage.getBoundingClientRect();
+    const currentCenter = {
+      x: center.x - (stage.left + stage.width / 2),
+      y: center.y - (stage.top + stage.height / 2)
+    };
+    const startCenter = {
+      x: imageGesture.startCenter.x - (stage.left + stage.width / 2),
+      y: imageGesture.startCenter.y - (stage.top + stage.height / 2)
+    };
+    const nextScale = Math.max(1, Math.min(5, imageGesture.startScale * imagePointerDistance() / imageGesture.startDistance));
+    const ratio = nextScale / imageGesture.startScale;
+    imageZoom.scale = nextScale;
+    imageZoom.x = currentCenter.x - ratio * (startCenter.x - imageGesture.startPanX);
+    imageZoom.y = currentCenter.y - ratio * (startCenter.y - imageGesture.startPanY);
+    applyImageZoom();
+    return;
+  }
+  const pointer = imagePointers.values().next().value;
+  if (imageGesture?.type !== 'pan') startImagePan(pointer);
+  if (imageZoom.scale > 1) {
+    imageZoom.x = imageGesture.startPanX + pointer.x - imageGesture.startX;
+    imageZoom.y = imageGesture.startPanY + pointer.y - imageGesture.startY;
+    applyImageZoom();
+  }
+}
+
+function handleImagePointerEnd(event) {
+  imagePointers.delete(event.pointerId);
+  if (el.imagePreview.hasPointerCapture(event.pointerId)) el.imagePreview.releasePointerCapture(event.pointerId);
+  if (!imagePointers.size) {
+    imageGesture = null;
+  } else if (imagePointers.size === 1) {
+    startImagePan(imagePointers.values().next().value);
+  }
 }
 
 function currentFile() {
@@ -348,6 +495,9 @@ async function selectFile(id) {
 function showPreparing(file) {
   el.preview.style.display = 'none';
   el.preview.removeAttribute('src');
+  el.imagePreview.style.display = 'none';
+  el.imagePreview.removeAttribute('src');
+  resetImageZoom();
   el.placeholder.classList.add('hidden');
   el.previewError.classList.add('hidden');
   el.loading.classList.remove('hidden');
@@ -367,10 +517,14 @@ async function waitForPreview(file) {
       await refreshStatus();
       el.loading.classList.add('hidden');
       el.previewError.classList.add('hidden');
-      el.preview.src = IMAGE_EXTENSIONS.has(file.ext)
-        ? `/api/preview/${file.id}`
-        : `/api/preview/${file.id}#view=FitH`;
-      el.preview.style.display = 'block';
+      if (IMAGE_EXTENSIONS.has(file.ext)) {
+        el.imagePreview.src = `/api/preview/${file.id}`;
+        el.imagePreview.style.display = 'block';
+        applyImageZoom();
+      } else {
+        el.preview.src = `/api/preview/${file.id}#view=FitH`;
+        el.preview.style.display = 'block';
+      }
       return;
     }
     const value = await response.json();
@@ -434,6 +588,7 @@ async function loadFolder() {
     el.folderPath.value = result.folder;
     el.currentName.textContent = '提出物を選択してください';
     el.preview.style.display = 'none';
+    el.imagePreview.style.display = 'none';
     el.placeholder.classList.remove('hidden');
     el.loading.classList.add('hidden');
     el.previewError.classList.add('hidden');
@@ -548,6 +703,27 @@ el.fileSplitter.addEventListener('keydown', (event) => {
     : state.panelWidths[state.viewMode] + (event.key === 'ArrowRight' ? 20 : -20);
   applyPanelWidth(next);
   savePanelWidth();
+});
+el.imagePreview.addEventListener('pointerdown', handleImagePointerDown);
+el.imagePreview.addEventListener('pointermove', handleImagePointerMove);
+el.imagePreview.addEventListener('pointerup', handleImagePointerEnd);
+el.imagePreview.addEventListener('pointercancel', handleImagePointerEnd);
+el.imagePreview.addEventListener('load', applyImageZoom);
+el.imagePreview.addEventListener('wheel', (event) => {
+  event.preventDefault();
+  zoomImageAt(Math.exp(-event.deltaY * 0.001), event.clientX, event.clientY);
+}, { passive: false });
+el.imagePreview.addEventListener('dblclick', (event) => {
+  event.preventDefault();
+  if (imageZoom.scale > 1) resetImageZoom();
+  else zoomImageAt(2, event.clientX, event.clientY);
+});
+el.imagePreview.addEventListener('keydown', (event) => {
+  if (!['+', '=', '-', '0'].includes(event.key)) return;
+  event.preventDefault();
+  const bounds = el.previewStage.getBoundingClientRect();
+  if (event.key === '0') resetImageZoom();
+  else zoomImageAt(event.key === '-' ? 0.8 : 1.25, bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
 });
 window.addEventListener('resize', () => applyPanelWidth());
 el.previous.addEventListener('click', () => move(-1));
